@@ -11,7 +11,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const googleMapsApiKey = "";
+const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // helper: geocode address -> {lat,lng}
   const geocodeAddress = (address) =>
