@@ -7,6 +7,7 @@ from google.genai import types
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
 # 1. Load Secrets
 load_dotenv()
@@ -17,14 +18,20 @@ client = genai.Client(vertexai=True, project=MY_PROJECT_ID, location="us-central
 
 # 3. FastAPI app
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite default port
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # 4. Request schema
 class SearchReq(BaseModel):
