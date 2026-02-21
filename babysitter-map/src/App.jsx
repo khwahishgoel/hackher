@@ -11,7 +11,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const googleMapsApiKey = "AIzaSyDbuIQab9qeavSasA4qEsbjOUv5DKo4wLQ";
+  const googleMapsApiKey = "";
 
   // helper: geocode address -> {lat,lng}
   const geocodeAddress = (address) =>
