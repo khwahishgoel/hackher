@@ -1,8 +1,9 @@
+import os
 from google import genai
 from google.genai import types
 
 # --- CONFIGURATION ---
-MY_PROJECT_ID = "hackher-488104" 
+MY_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 
 # Initialize the Client using your terminal login (gcloud auth)
 client = genai.Client(
