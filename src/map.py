@@ -1,7 +1,12 @@
 import os
+import json
+import re
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # 1. Load Secrets
 load_dotenv()
@@ -10,19 +15,45 @@ MY_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 # 2. Setup Gemini
 client = genai.Client(vertexai=True, project=MY_PROJECT_ID, location="us-central1")
 
-def mom_search_engine(category, location="Western Massachusetts"):
+# 3. FastAPI app
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 4. Request schema
+class SearchReq(BaseModel):
+    category: str
+    location: str | None = "Western Massachusetts"
+
+
+def mom_search_engine(category: str, location: str = "Western Massachusetts"):
     """
     Search engine optimized for Western Mass moms.
-    Default location is Western Mass if none is provided.
+    Returns clean JSON: { results: [ { title, address, maps_uri } ] }
     """
-    # Specifically asking for Western Mass regional context
-    user_query = (
-        f"Find 3 top-rated {category} in {location}. "
-        "Prioritize places with easy parking, kid-friendly waiting areas, "
-        "and highly positive reviews from local parents in the Pioneer Valley."
-    )
-    
-    print(f"Searching {category} in the 413...")
+    user_query = f"""
+Return ONLY valid JSON — no markdown, no explanation, no code fences.
+Use exactly this schema:
+{{
+  "results": [
+    {{
+      "title": "string",
+      "address": "string (full street address)",
+      "maps_uri": "string (Google Maps URL)"
+    }}
+  ]
+}}
+
+Find 3 top-rated {category} in {location}.
+Prioritize easy parking, kid-friendly waiting areas, and highly positive reviews from local parents.
+Every result MUST include a real street address.
+"""
 
     try:
         response = client.models.generate_content(
@@ -32,26 +63,46 @@ def mom_search_engine(category, location="Western Massachusetts"):
                 tools=[types.Tool(google_maps=types.GoogleMaps())]
             )
         )
-        
-        # Output results
-        print("\n LOCAL RECOMMENDATIONS:")
-        print(response.text)
-        
-        # Extract links for the frontend
+
+        text = response.text.strip()
+
+        # Strip markdown code fences if Gemini wraps in ```json ... ```
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+
+        data = json.loads(text)
+
+        # Patch in maps URIs from grounding metadata if Gemini didn't include them
         metadata = response.candidates[0].grounding_metadata
-        if metadata.grounding_chunks:
-            print("\nGOOGLE MAPS LINKS:")
-            for chunk in metadata.grounding_chunks:
-                if chunk.maps:
-                    print(f"- {chunk.maps.title}: {chunk.maps.uri}")
-                    
-        return response
+        if metadata and metadata.grounding_chunks:
+            maps_chunks = [
+                chunk.maps for chunk in metadata.grounding_chunks if chunk.maps
+            ]
+            for i, result in enumerate(data.get("results", [])):
+                if not result.get("maps_uri") and i < len(maps_chunks):
+                    result["maps_uri"] = maps_chunks[i].uri
+                    if not result.get("title"):
+                        result["title"] = maps_chunks[i].title
 
+        return data
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini returned non-JSON response: {e}. Raw: {text[:300]}"
+        )
     except Exception as e:
-        print(f"Error during Western Mass search: {e}")
-        return None
+        raise HTTPException(status_code=500, detail=str(e))
 
-# --- DEMO RUN ---
+
+# 5. POST /search endpoint
+@app.post("/search")
+def search(req: SearchReq):
+    return mom_search_engine(req.category, req.location)
+
+
+# --- RUN SERVER ---
 if __name__ == "__main__":
-    # Test for a classic Western Mass mom need: a kid-friendly cafe or pediatrician
-    mom_search_engine("Pediatrician", "Northampton and Amherst, MA")
+    import uvicorn
+    uvicorn.run("map:app", host="0.0.0.0", port=8000, reload=True)
+    #              ^^^ this must match YOUR filename (map.py)
