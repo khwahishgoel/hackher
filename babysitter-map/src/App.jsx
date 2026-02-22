@@ -1,20 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const center = { lat: 42.25, lng: -72.65 };
-const defaultZoom = 9;
-
-const WESTERN_MA_BOUNDS = {
-  minLat: 41.9,
-  maxLat: 42.9,
-  minLng: -73.6,
-  maxLng: -72.0,
-};
-
-const inWesternMA = (lat, lng) =>
-  lat >= WESTERN_MA_BOUNDS.minLat &&
-  lat <= WESTERN_MA_BOUNDS.maxLat &&
-  lng >= WESTERN_MA_BOUNDS.minLng &&
-  lng <= WESTERN_MA_BOUNDS.maxLng;
+const center = { lat: 42.3732, lng: -72.5199 };
 
 const mapStyles = [
   { featureType: "all", elementType: "geometry", stylers: [{ color: "#ffecf2" }] },
@@ -41,7 +27,7 @@ export default function App() {
 
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
+  const [mapReady, setMapReady] = useState(false); // 👈 track when map is ready
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -49,7 +35,7 @@ export default function App() {
     const initMap = () => {
       const map = new window.google.maps.Map(mapRef.current, {
         center,
-        zoom: defaultZoom,
+        zoom: 13,
         styles: mapStyles,
         mapTypeControl: false,
         streetViewControl: false,
@@ -57,7 +43,7 @@ export default function App() {
       });
       mapInstanceRef.current = map;
       infoWindowRef.current = new window.google.maps.InfoWindow();
-      setMapReady(true);
+      setMapReady(true); // 👈 signal map is ready
     };
 
     if (window.google?.maps) {
@@ -66,46 +52,49 @@ export default function App() {
     }
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&v=3.49`;
     script.async = true;
     script.onload = initMap;
     document.head.appendChild(script);
   }, []);
 
+  // Only run when BOTH map is ready AND places are loaded
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || places.length === 0) return;
 
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
-    places.forEach((p) => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: p.lat, lng: p.lng },
-        map: mapInstanceRef.current,
-        icon: {
-          url: "/marker.png",
-          scaledSize: new window.google.maps.Size(50, 50),
-          anchor: new window.google.maps.Point(25, 50),
-        },
-      });
+    places
+      .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
+      .forEach((p) => {
+        const marker = new window.google.maps.Marker({
+          position: { lat: p.lat, lng: p.lng },
+          map: mapInstanceRef.current,
+          icon: {
+            url: "/marker.png",
+            scaledSize: new window.google.maps.Size(50, 50),
+            anchor: new window.google.maps.Point(25, 50),
+          },
+        });
 
-      marker.addListener("click", () => {
-        infoWindowRef.current.setContent(`
-          <div style="font-family:sans-serif;max-width:200px">
-            <div style="font-weight:700;color:#8a6a55;margin-bottom:4px">${p.title}</div>
-            <div style="font-size:12px;color:#9a7a65;margin-bottom:6px">${p.address}</div>
-            <a href="${p.maps_uri}" target="_blank" rel="noreferrer"
-              style="color:#e8957a;font-size:12px;font-weight:600">
-              Open in Google Maps
-            </a>
-          </div>
-        `);
-        infoWindowRef.current.open(mapInstanceRef.current, marker);
-      });
+        marker.addListener("click", () => {
+          infoWindowRef.current.setContent(`
+            <div style="font-family:sans-serif;max-width:200px">
+              <div style="font-weight:700;color:#8a6a55;margin-bottom:4px">${p.title}</div>
+              <div style="font-size:12px;color:#9a7a65;margin-bottom:6px">${p.address}</div>
+              <a href="${p.maps_uri}" target="_blank" rel="noreferrer"
+                style="color:#e8957a;font-size:12px;font-weight:600">
+                Open in Google Maps
+              </a>
+            </div>
+          `);
+          infoWindowRef.current.open(mapInstanceRef.current, marker);
+        });
 
-      markersRef.current.push(marker);
-    });
-  }, [mapReady, places]);
+        markersRef.current.push(marker);
+      });
+  }, [mapReady, places]); // 👈 depends on both
 
   const geocodeAddress = (address) =>
     new Promise((resolve, reject) => {
@@ -128,10 +117,7 @@ export default function App() {
       const res = await fetch("http://127.0.0.1:8000/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: "pediatrician",
-          location: "Western Massachusetts, MA",
-        }),
+        body: JSON.stringify({ category: "pediatrician", location: "Amherst, MA" }),
       });
 
       if (!res.ok) throw new Error(await res.text());
@@ -148,15 +134,7 @@ export default function App() {
         })
       );
 
-      const filtered = withCoords.filter(
-        (p) =>
-          typeof p.lat === "number" &&
-          typeof p.lng === "number" &&
-          inWesternMA(p.lat, p.lng)
-      );
-
-      console.log("filtered (Western MA only):", filtered);
-      setPlaces(filtered);
+      setPlaces(withCoords);
     } catch (e) {
       alert("Search failed: " + e.message);
       console.error(e);
@@ -168,7 +146,7 @@ export default function App() {
   useEffect(() => {
     const t = setTimeout(() => runSearch(), 1000);
     return () => clearTimeout(t);
-  }, [apiKey]);
+  }, []);
 
   return (
     <div style={{ position: "relative", width: "100vw", height: "100vh" }}>
