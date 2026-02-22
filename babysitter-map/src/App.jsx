@@ -2,8 +2,21 @@ import { GoogleMap, LoadScript, Marker, InfoWindow } from "@react-google-maps/ap
 import { useEffect, useMemo, useState } from "react";
 
 const containerStyle = { width: "100vw", height: "100vh" };
-const center = { lat: 42.3732, lng: -72.5199 }; // Amherst
+const center = { lat: 42.25, lng: -72.65 }; // Western MA-ish
+const defaultZoom = 9;
+// Rough Western MA bounding box (covers Berkshires → Pioneer Valley)
+const WESTERN_MA_BOUNDS = {
+  minLat: 41.90,
+  maxLat: 42.90,
+  minLng: -73.60,
+  maxLng: -72.00,
+};
 
+const inWesternMA = (lat, lng) =>
+  lat >= WESTERN_MA_BOUNDS.minLat &&
+  lat <= WESTERN_MA_BOUNDS.maxLat &&
+  lng >= WESTERN_MA_BOUNDS.minLng &&
+  lng <= WESTERN_MA_BOUNDS.maxLng;
 export default function App() {
   console.log("App.jsx loaded ✅");
 
@@ -39,7 +52,7 @@ const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           category: "pediatrician",
-          location: "Amherst, MA",
+          location: "Western Massachusetts, MA",
         }),
       });
 
@@ -62,7 +75,12 @@ const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
       );
 
       console.log("places with coords:", withCoords);
-      setPlaces(withCoords);
+const filtered = withCoords.filter(
+  (p) => typeof p.lat === "number" && typeof p.lng === "number" && inWesternMA(p.lat, p.lng)
+);
+
+console.log("filtered (Western MA only):", filtered);
+setPlaces(filtered);
     } catch (e) {
       alert(`Search failed: ${e.message}`);
       console.error(e);
@@ -84,7 +102,7 @@ const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   return (
     <LoadScript googleMapsApiKey={googleMapsApiKey}>
-      <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={13}>
+      <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={defaultZoom}>
         {/* button that cannot hide */}
         <div
           style={{
