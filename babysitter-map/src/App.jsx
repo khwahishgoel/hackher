@@ -1,15 +1,13 @@
-import { GoogleMap, LoadScript, Marker, InfoWindow } from "@react-google-maps/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const containerStyle = { width: "100vw", height: "100vh" };
-const center = { lat: 42.25, lng: -72.65 }; // Western MA-ish
+const center = { lat: 42.25, lng: -72.65 };
 const defaultZoom = 9;
-// Rough Western MA bounding box (covers Berkshires → Pioneer Valley)
+
 const WESTERN_MA_BOUNDS = {
-  minLat: 41.90,
-  maxLat: 42.90,
-  minLng: -73.60,
-  maxLng: -72.00,
+  minLat: 41.9,
+  maxLat: 42.9,
+  minLng: -73.6,
+  maxLng: -72.0,
 };
 
 const inWesternMA = (lat, lng) =>
@@ -17,34 +15,114 @@ const inWesternMA = (lat, lng) =>
   lat <= WESTERN_MA_BOUNDS.maxLat &&
   lng >= WESTERN_MA_BOUNDS.minLng &&
   lng <= WESTERN_MA_BOUNDS.maxLng;
+
+const mapStyles = [
+  { featureType: "all", elementType: "geometry", stylers: [{ color: "#ffecf2" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#b8d4e8" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#7a9bb5" }] },
+  { featureType: "road.highway", elementType: "geometry.fill", stylers: [{ color: "#e8b99a" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#d4a882" }] },
+  { featureType: "road.arterial", elementType: "geometry.fill", stylers: [{ color: "#f0cdb0" }] },
+  { featureType: "road.arterial", elementType: "geometry.stroke", stylers: [{ color: "#d4a882" }] },
+  { featureType: "road.local", elementType: "geometry.fill", stylers: [{ color: "#f5d9c0" }] },
+  { featureType: "road.local", elementType: "geometry.stroke", stylers: [{ color: "#d4a882" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9a7a65" }] },
+  { featureType: "road", elementType: "labels.text.stroke", stylers: [{ color: "#f7ddc6" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8a6a55" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f7ddc6" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+];
+
 export default function App() {
-  console.log("App.jsx loaded ✅");
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
+  const infoWindowRef = useRef(null);
 
-  const [places, setPlaces] = useState([]); // {title,address,maps_uri,lat,lng}
-  const [selected, setSelected] = useState(null);
+  const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
-const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // helper: geocode address -> {lat,lng}
+  useEffect(() => {
+    const initMap = () => {
+      const map = new window.google.maps.Map(mapRef.current, {
+        center,
+        zoom: defaultZoom,
+        styles: mapStyles,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      });
+      mapInstanceRef.current = map;
+      infoWindowRef.current = new window.google.maps.InfoWindow();
+      setMapReady(true);
+    };
+
+    if (window.google?.maps) {
+      initMap();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.onload = initMap;
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || places.length === 0) return;
+
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
+
+    places.forEach((p) => {
+      const marker = new window.google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        map: mapInstanceRef.current,
+        icon: {
+          url: "/marker.png",
+          scaledSize: new window.google.maps.Size(50, 50),
+          anchor: new window.google.maps.Point(25, 50),
+        },
+      });
+
+      marker.addListener("click", () => {
+        infoWindowRef.current.setContent(`
+          <div style="font-family:sans-serif;max-width:200px">
+            <div style="font-weight:700;color:#8a6a55;margin-bottom:4px">${p.title}</div>
+            <div style="font-size:12px;color:#9a7a65;margin-bottom:6px">${p.address}</div>
+            <a href="${p.maps_uri}" target="_blank" rel="noreferrer"
+              style="color:#e8957a;font-size:12px;font-weight:600">
+              Open in Google Maps
+            </a>
+          </div>
+        `);
+        infoWindowRef.current.open(mapInstanceRef.current, marker);
+      });
+
+      markersRef.current.push(marker);
+    });
+  }, [mapReady, places]);
+
   const geocodeAddress = (address) =>
     new Promise((resolve, reject) => {
-      if (!window.google?.maps?.Geocoder) return reject(new Error("Geocoder not loaded"));
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ address }, (results, status) => {
         if (status === "OK" && results?.[0]) {
           const loc = results[0].geometry.location;
           resolve({ lat: loc.lat(), lng: loc.lng() });
         } else {
-          reject(new Error(`Geocode failed: ${status}`));
+          reject(new Error("Geocode failed: " + status));
         }
       });
     });
 
-  // fetch from backend + geocode
   const runSearch = async () => {
     setLoading(true);
-    setSelected(null);
+    infoWindowRef.current?.close();
 
     try {
       const res = await fetch("http://127.0.0.1:8000/search", {
@@ -56,13 +134,9 @@ const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err);
-      }
+      if (!res.ok) throw new Error(await res.text());
 
       const data = await res.json();
-
       const withCoords = await Promise.all(
         (data.results || []).map(async (p) => {
           try {
@@ -74,72 +148,60 @@ const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         })
       );
 
-      console.log("places with coords:", withCoords);
-const filtered = withCoords.filter(
-  (p) => typeof p.lat === "number" && typeof p.lng === "number" && inWesternMA(p.lat, p.lng)
-);
+      const filtered = withCoords.filter(
+        (p) =>
+          typeof p.lat === "number" &&
+          typeof p.lng === "number" &&
+          inWesternMA(p.lat, p.lng)
+      );
 
-console.log("filtered (Western MA only):", filtered);
-setPlaces(filtered);
+      console.log("filtered (Western MA only):", filtered);
+      setPlaces(filtered);
     } catch (e) {
-      alert(`Search failed: ${e.message}`);
+      alert("Search failed: " + e.message);
       console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  // auto-run once after map loads (you can remove this later)
   useEffect(() => {
-    const t = setTimeout(() => runSearch(), 500);
+    const t = setTimeout(() => runSearch(), 1000);
     return () => clearTimeout(t);
-  }, []);
-
-  const markers = useMemo(
-    () => places.filter((p) => typeof p.lat === "number" && typeof p.lng === "number"),
-    [places]
-  );
+  }, [apiKey]);
 
   return (
-    <LoadScript googleMapsApiKey={googleMapsApiKey}>
-      <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={defaultZoom}>
-        {/* button that cannot hide */}
-        <div
+    <div style={{ position: "relative", width: "100vw", height: "100vh" }}>
+      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 12,
+          zIndex: 9999,
+          background: "#f7ddc6",
+          padding: 8,
+          borderRadius: 12,
+          boxShadow: "0 2px 10px rgba(0,0,0,0.15)",
+        }}
+      >
+        <button
+          onClick={runSearch}
+          disabled={loading}
           style={{
-            position: "fixed",
-            top: 12,
-            left: 12,
-            zIndex: 9999,
-            background: "white",
-            padding: 8,
+            padding: "10px 16px",
+            background: "#e8957a",
+            color: "white",
+            border: "none",
             borderRadius: 8,
-            boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+            cursor: "pointer",
+            fontWeight: 600,
           }}
         >
-          <button onClick={runSearch} disabled={loading} style={{ padding: "10px 12px" }}>
-            {loading ? "Searching..." : "Search Pediatricians"}
-          </button>
-        </div>
-
-        {markers.map((p, i) => (
-          <Marker key={i} position={{ lat: p.lat, lng: p.lng }} onClick={() => setSelected(p)} />
-        ))}
-
-        {selected && (
-          <InfoWindow
-            position={{ lat: selected.lat, lng: selected.lng }}
-            onCloseClick={() => setSelected(null)}
-          >
-            <div>
-              <div style={{ fontWeight: 700 }}>{selected.title}</div>
-              <div style={{ fontSize: 12 }}>{selected.address}</div>
-              <a href={selected.maps_uri} target="_blank" rel="noreferrer">
-                Open in Google Maps
-              </a>
-            </div>
-          </InfoWindow>
-        )}
-      </GoogleMap>
-    </LoadScript>
+          {loading ? "Searching..." : "Search Pediatricians"}
+        </button>
+      </div>
+    </div>
   );
 }
