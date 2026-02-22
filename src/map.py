@@ -7,7 +7,7 @@ from google.genai import types
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from profiles import add_profile
+#from profiles import add_profile
 
 # 1. Load Secrets
 load_dotenv()
@@ -23,7 +23,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -98,23 +98,23 @@ Every result MUST include a real street address.
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 6. POST /search endpoint
+#6. POST /search endpoint
 @app.post("/search")
 def search(req: SearchReq):
     return mom_search_engine(req.category, req.location)
 
 
 # 7. POST /save-profile endpoint
-@app.post("/save-profile")
-def save_profile(req: ProfileReq):
-    try:
-        result = add_profile(
-            name=req.name,
-            location=req.location,
-            kids=req.kids,
-            needs=req.needs,
-            requirements=[req.requirements]
-        )
-        return {"message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+#@app.post("/save-profile")
+#def save_profile(req: ProfileReq):
+    #try:
+        #result = add_profile(
+            #name=req.name,
+            #location=req.location,
+            #kids=req.kids,
+            #needs=req.needs,
+           # requirements=[req.requirements]
+       # )
+       # return {"message": result}
+    #except Exception as e:
+        #raise HTTPException(status_code=500, detail=str(e))
