@@ -227,11 +227,22 @@ img {
   font-weight: 700;
   font-size: 0.9rem;
   letter-spacing: 0.4px;
+  z-index: 10;
 }
 
 .tag--soft {
   background: rgba(160, 201, 231, 0.35);
   color: #6f8eb4;
+}
+
+.tag_images {
+    position: absolute;
+    z-index: 100;
+    width: 20%;
+    height: 20%;
+    transform: translateY(100%);
+    transform: translateX(-5%);
+
 }
 
 .cta-group {
@@ -254,7 +265,7 @@ img {
 }
 
 .btn--primary {
-  background: linear-gradient(135deg, #fbd7ac, #fcd3e6);
+  background: linear-gradient(135deg, #afe7f4df, #fcd3e6);
   color: #fff;
   box-shadow: var(--shadow-soft);
 }
